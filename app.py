@@ -52,10 +52,8 @@ def run_ai_on_image(image_bytes):
         # 2. Pre-process the image
         img_resized = cv2.resize(frame, (IMG_WIDTH, IMG_HEIGHT))
         img_batch = np.expand_dims(img_resized, axis=0).astype(np.float32)
-        # Normalize if your model was trained with normalization (e.g., /255.0)
-        # The Rescaling layer in train.py handles this, so TFLite might expect 0-255
-        # If predictions are bad, try uncommenting the line below:
-        # img_batch = img_batch / 255.0
+        # Normalize: Convert pixel values from 0-255 to 0.0-1.0
+        img_batch = img_batch / 255.0 # <--- NORMALIZATION ENABLED
 
         # 3. Set tensor, invoke (run inference), and get results
         interpreter.set_tensor(input_details[0]['index'], img_batch)
@@ -63,7 +61,7 @@ def run_ai_on_image(image_bytes):
         prediction = interpreter.get_tensor(output_details[0]['index'])
 
         # 4. Get the result
-        scores = prediction[0] # Output is usually shape [1, num_classes]
+        scores = prediction[0]
         predicted_index = np.argmax(scores)
         label = class_names[predicted_index]
         confidence = 100 * scores[predicted_index]
@@ -95,6 +93,6 @@ def upload_image():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000)) # Render uses PORT env var, defaults to 10000
+    port = int(os.environ.get('PORT', 10000))
     # Make sure debug=False for production on Render
     app.run(host='0.0.0.0', port=port, debug=False)
