@@ -2,4 +2,4 @@ Flask
 gunicorn
 opencv-python-headless
 numpy
-tflite-runtime==2.16.1
+tflite-runtime==2.14.0
