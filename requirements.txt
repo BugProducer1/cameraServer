@@ -1,5 +1,5 @@
 Flask
 gunicorn
 opencv-python-headless
-numpy<2
+numpy
 tflite-runtime
