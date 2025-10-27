@@ -1,61 +1,105 @@
 import os
 import cv2
 import numpy as np
-import tflite_runtime.interpreter as tflite # Correct import
+import tflite_runtime.interpreter as tflite
 from flask import Flask, request, Response
 
 app = Flask(__name__)
 
 # --- AI MODEL SETUP ---
-# 1. Load your trained .h5 or SavedModel
-# model = tf.keras.models.load_model('my_garbage_model.h5')
+MODEL_PATH = "model.tflite" # Your trained model file
+interpreter = None
+input_details = None
+output_details = None
+IMG_HEIGHT = 96 # Should match the training script (train.py)
+IMG_WIDTH = 96 # Should match the training script (train.py)
 
-# 2. Define your class names
-# class_names = ['plastic', 'paper', 'metal']
+# !! IMPORTANT: Make sure this list EXACTLY matches the order from train.py !!
+class_names = ['cardboard', 'glass', 'metal', 'paper', 'plastic', 'trash']
+
+try:
+    print(f"Loading TFLite model from: {MODEL_PATH}")
+    interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Get input shape from the model details if needed, but we define it above
+    # input_shape = input_details[0]['shape']
+    # IMG_HEIGHT = input_shape[1]
+    # IMG_WIDTH = input_shape[2]
+    print(f"Model loaded successfully. Expecting input shape: (1, {IMG_HEIGHT}, {IMG_WIDTH}, 3)")
+
+except Exception as e:
+    print(f"ERROR: Failed to load model or allocate tensors: {e}")
+    # Keep interpreter as None to indicate failure
+
 # --------------------
 
 def run_ai_on_image(image_bytes):
+    if interpreter is None:
+        print("ERROR: Interpreter not available.")
+        return "Error: Model not loaded"
+
     print("Image received, running AI model...")
 
-    # --- AI INFERENCE ---
-    # 1. Decode the image
-    # nparr = np.frombuffer(image_bytes, np.uint8)
-    # frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    try:
+        # --- AI INFERENCE ---
+        # 1. Decode the image
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is None:
+            print("ERROR: Failed to decode image.")
+            return "Error: Bad image data"
 
-    # 2. Pre-process the image
-    # img_resized = cv2.resize(frame, (96, 96))
-    # img_array = tf.keras.utils.img_to_array(img_resized)
-    # img_batch = np.expand_dims(img_array, axis=0)
+        # 2. Pre-process the image (resize and normalize if model expects it)
+        # Resize to model's expected input size
+        img_resized = cv2.resize(frame, (IMG_WIDTH, IMG_HEIGHT))
+        # Add batch dimension and convert to float32 (common for TFLite)
+        img_batch = np.expand_dims(img_resized, axis=0).astype(np.float32)
+        # Normalize if your model was trained with normalization (e.g., /255.0)
+        # img_batch = img_batch / 255.0
 
-    # 3. Run prediction
-    # prediction = model.predict(img_batch)
-    # score = tf.nn.softmax(prediction[0])
+        # 3. Set tensor, invoke (run inference), and get results
+        interpreter.set_tensor(input_details[0]['index'], img_batch)
+        interpreter.invoke()
+        prediction = interpreter.get_tensor(output_details[0]['index'])
 
-    # 4. Get the result
-    # label = class_names[np.argmax(score)]
-    # confidence = 100 * np.max(score)
+        # 4. Get the result
+        scores = prediction[0] # Output is usually shape [1, num_classes]
+        predicted_index = np.argmax(scores)
+        label = class_names[predicted_index]
+        confidence = 100 * scores[predicted_index] # Use score directly
 
-    # print(f"AI Result: {label} ({confidence:.2f}%)")
+        print(f"AI Result: {label} ({confidence:.2f}%)")
+        return label
 
-    # --- Placeholder for this example ---
-    label = "plastic"
-    # --------------------
+    except Exception as e:
+        print(f"ERROR during inference: {e}")
+        return "Error: Inference failed"
 
-    return label
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
-    try:
-        image_data = request.data
+    if request.method == 'POST':
+        try:
+            image_data = request.data
+            if not image_data:
+                return Response(response="Error: No image data received", status=400, mimetype='text/plain')
 
-        result = run_ai_on_image(image_data)
+            result = run_ai_on_image(image_data)
+            return Response(response=result, status=200, mimetype='text/plain')
 
-        return Response(response=result, status=200, mimetype='text/plain')
+        except Exception as e:
+            print(f"Error processing upload request: {e}")
+            return Response(response="Server Error", status=500, mimetype='text/plain')
+    else:
+        # Optional: Handle GET requests if needed, otherwise method not allowed
+        return Response(response="Method Not Allowed", status=405, mimetype='text/plain')
 
-    except Exception as e:
-        print(f"Error processing image: {e}")
-        return Response(response="Error", status=500, mimetype='text/plain')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)  
+    # Make sure debug=False for production on Render
+    app.run(host='0.0.0.0', port=port, debug=False)
