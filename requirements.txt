@@ -1,4 +1,5 @@
 Flask
-tensorflow
-numpy
+gunicorn
 opencv-python-headless
+numpy
+tflite-runtime
