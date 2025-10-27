@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-import tensorflow as tf
+import tflite_runtime.interpreter as tflite # Correct import
 from flask import Flask, request, Response
 
 app = Flask(__name__)
