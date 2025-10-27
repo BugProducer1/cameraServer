@@ -54,18 +54,22 @@ model.compile(
 )
 
 print("\nStarting model training...")
-model.fit(train_ds, validation_data=val_ds, epochs=15) # Increased epochs slightly
+# You can adjust epochs based on previous results, 15 seemed okay
+model.fit(train_ds, validation_data=val_ds, epochs=15)
 
-print("\nConverting model to TensorFlow Lite (.tflite)...")
+print("\nConverting model to TensorFlow Lite (.tflite) WITHOUT optimization...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
-converter.optimizations = [tf.lite.Optimize.DEFAULT] # Add optimization
+
+# --- OPTIMIZATION REMOVED ---
+# converter.optimizations = [tf.lite.Optimize.DEFAULT] # This line is commented out/removed
+# ----------------------------
 
 tflite_model = converter.convert()
 
 with open("model.tflite", "wb") as f:
     f.write(tflite_model)
 
-print(f"Success! Saved quantized model as 'model.tflite' ({len(tflite_model)} bytes)")
+print(f"Success! Saved UNOPTIMIZED model as 'model.tflite' ({len(tflite_model)} bytes)")
 print("Phase 1 is complete. Add model.tflite to your GitHub repo.")
 
 # Update app.py class_names (optional helper)
