@@ -42,18 +42,21 @@ def run_ai_on_image(image_bytes):
 
     try:
         # --- AI INFERENCE ---
-        # 1. Decode the image
+        # 1. Decode the image (OpenCV reads as BGR by default)
         nparr = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is None:
             print("ERROR: Failed to decode image.")
             return "Error: Bad image data"
 
-        # 2. Pre-process the image
-        img_resized = cv2.resize(frame, (IMG_WIDTH, IMG_HEIGHT))
+        # ** Convert color from BGR to RGB **
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # 2. Pre-process the image (use the RGB frame)
+        img_resized = cv2.resize(frame_rgb, (IMG_WIDTH, IMG_HEIGHT)) # Use frame_rgb
         img_batch = np.expand_dims(img_resized, axis=0).astype(np.float32)
         # Normalize: Convert pixel values from 0-255 to 0.0-1.0
-        img_batch = img_batch / 255.0 # <--- NORMALIZATION ENABLED
+        img_batch = img_batch / 255.0
 
         # 3. Set tensor, invoke (run inference), and get results
         interpreter.set_tensor(input_details[0]['index'], img_batch)
@@ -63,6 +66,8 @@ def run_ai_on_image(image_bytes):
         # 4. Get the result
         scores = prediction[0]
         predicted_index = np.argmax(scores)
+        # ADD THIS LINE TO LOG SCORES (optional, but helpful for debugging):
+        print(f"Raw Scores: {scores}")
         label = class_names[predicted_index]
         confidence = 100 * scores[predicted_index]
 
