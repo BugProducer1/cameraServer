@@ -8,19 +8,25 @@ import sys
 IMG_WIDTH = 96
 IMG_HEIGHT = 96
 IMAGE_SIZE = (IMG_WIDTH, IMG_HEIGHT)
-BATCH_SIZE = 16 # Batch size is 16, but you only have 4 images.
+BATCH_SIZE = 16
 DATA_DIR = "dataset"
-EPOCHS = 50 # Reduced epochs, no early stopping
+EPOCHS = 100
 
 print(f"Loading images from: {DATA_DIR}")
 
-# --- Load Datasets ---
-# NOTE: We have REMOVED the validation_split.
-# With so few images, you cannot split the data.
-# This will fix your ValueError.
 train_ds = tf.keras.utils.image_dataset_from_directory(
     DATA_DIR,
-    # No validation_split or subset
+    validation_split=0.2,
+    subset="training",
+    seed=123,
+    image_size=IMAGE_SIZE,
+    batch_size=BATCH_SIZE,
+)
+
+val_ds = tf.keras.utils.image_dataset_from_directory(
+    DATA_DIR,
+    validation_split=0.2,
+    subset="validation",
     seed=123,
     image_size=IMAGE_SIZE,
     batch_size=BATCH_SIZE,
@@ -30,12 +36,10 @@ class_names = train_ds.class_names
 num_classes = len(class_names)
 print(f"Found classes: {class_names}")
 
-# --- Configure for Performance ---
 AUTOTUNE = tf.data.AUTOTUNE
-# You only have 4 images, but this is good practice
 train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
+val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
-# --- Data Augmentation Layer ---
 data_augmentation = keras.Sequential(
     [
         layers.RandomFlip("horizontal", input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),
@@ -45,7 +49,6 @@ data_augmentation = keras.Sequential(
     name="data_augmentation"
 )
 
-# --- Build a More Robust Model ---
 model = keras.Sequential([
     data_augmentation,
     layers.Rescaling(1./255, name="rescaling"),
@@ -69,23 +72,29 @@ model.compile(
     metrics=['accuracy']
 )
 
-# --- Early Stopping REMOVED ---
-# We have no validation data, so we cannot use EarlyStopping.
+early_stopper = tf.keras.callbacks.EarlyStopping(
+    monitor='val_accuracy',
+    patience=10,
+    verbose=1,
+    restore_best_weights=True
+)
 
 print("\nStarting model training...")
 history = model.fit(
     train_ds, 
-    # validation_data=val_ds, # REMOVED
-    epochs=EPOCHS
-    # callbacks=[early_stopper] # REMOVED
+    validation_data=val_ds, 
+    epochs=EPOCHS,
+    callbacks=[early_stopper]
 )
 
-print("\nTraining complete.")
-# We cannot evaluate on a validation set, because we don't have one.
+print("\nTraining complete. Model accuracy on validation set:")
+val_loss, val_acc = model.evaluate(val_ds)
+print(f"Validation Accuracy: {val_acc * 100:.2f}%")
 
 
 print("\nConverting model to TensorFlow Lite (.tflite) WITHOUT optimization...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
+
 tflite_model = converter.convert()
 
 with open("model.tflite", "wb") as f:
