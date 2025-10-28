@@ -15,7 +15,7 @@ IMG_HEIGHT = 96 # Should match the training script (train.py)
 IMG_WIDTH = 96 # Should match the training script (train.py)
 
 # !! IMPORTANT: Make sure this list EXACTLY matches the order from train.py !!
-class_names = ['metal', 'plastic']
+class_names = ['metal', 'plastic'] # MAKE SURE THIS IS THE ORDER FROM train.py's output
 
 try:
     print(f"Loading TFLite model from: {MODEL_PATH}")
@@ -25,7 +25,8 @@ try:
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    print(f"Model loaded successfully. Expecting input shape: (1, {IMG_HEIGHT}, {IMG_WIDTH}, 3)")
+    print(f"Model loaded successfully. Expecting input shape: {input_details[0]['shape']}")
+    print(f"Input type: {input_details[0]['dtype']}") # Will likely be float32
 
 except Exception as e:
     print(f"ERROR: Failed to load model or allocate tensors: {e}")
@@ -50,14 +51,29 @@ def run_ai_on_image(image_bytes):
             return "Error: Bad image data"
 
         # ** Convert color from BGR to RGB **
+        # (This is correct, as Keras's image_dataset_from_directory loads as RGB)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # 2. Pre-process the image (use the RGB frame)
-        img_resized = cv2.resize(frame_rgb, (IMG_WIDTH, IMG_HEIGHT)) # Use frame_rgb
-        img_batch = np.expand_dims(img_resized, axis=0).astype(np.float32)
-        # Normalize: Convert pixel values from 0-255 to 0.0-1.0
-        img_batch = img_batch / 255.0
+        img_resized = cv2.resize(frame_rgb, (IMG_WIDTH, IMG_HEIGHT))
+        img_batch = np.expand_dims(img_resized, axis=0)
 
+        # !! ----- THE FIX IS HERE ----- !!
+        # We must check the model's expected input type
+        # If the model (from train.py) has a Rescaling(1./255) layer, 
+        # it *already* does the normalization.
+        # DO NOT normalize manually. Just cast to the correct type.
+        
+        # Check if the model expects float or int
+        if input_details[0]['dtype'] == np.float32:
+            # The TFLite model (with its rescaling layer) expects FLOAT pixels from 0-255
+            img_batch = img_batch.astype(np.float32) 
+            # *DO NOT* divide by 255.0 here. The model does it.
+            # WRONG: img_batch = img_batch / 255.0 
+        else:
+            # Less common: if the model was quantized to expect INT8
+            img_batch = img_batch.astype(np.uint8)
+        
         # 3. Set tensor, invoke (run inference), and get results
         interpreter.set_tensor(input_details[0]['index'], img_batch)
         interpreter.invoke()
@@ -66,8 +82,9 @@ def run_ai_on_image(image_bytes):
         # 4. Get the result
         scores = prediction[0]
         predicted_index = np.argmax(scores)
-        # ADD THIS LINE TO LOG SCORES (optional, but helpful for debugging):
-        print(f"Raw Scores: {scores}")
+        
+        print(f"Raw Scores: {scores}") # Check these scores
+        
         label = class_names[predicted_index]
         confidence = 100 * scores[predicted_index]
 
@@ -99,5 +116,5 @@ def upload_image():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    # Make sure debug=False for production on Render
+    # Make sure debug=False for production
     app.run(host='0.0.0.0', port=port, debug=False)
