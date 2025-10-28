@@ -8,26 +8,19 @@ import sys
 IMG_WIDTH = 96
 IMG_HEIGHT = 96
 IMAGE_SIZE = (IMG_WIDTH, IMG_HEIGHT)
-BATCH_SIZE = 16
+BATCH_SIZE = 16 # Batch size is 16, but you only have 4 images.
 DATA_DIR = "dataset"
-EPOCHS = 100 # We'll use EarlyStopping, so this is just a max
+EPOCHS = 50 # Reduced epochs, no early stopping
 
 print(f"Loading images from: {DATA_DIR}")
 
 # --- Load Datasets ---
+# NOTE: We have REMOVED the validation_split.
+# With so few images, you cannot split the data.
+# This will fix your ValueError.
 train_ds = tf.keras.utils.image_dataset_from_directory(
     DATA_DIR,
-    validation_split=0.2,
-    subset="training",
-    seed=123,
-    image_size=IMAGE_SIZE,
-    batch_size=BATCH_SIZE,
-)
-
-val_ds = tf.keras.utils.image_dataset_from_directory(
-    DATA_DIR,
-    validation_split=0.2,
-    subset="validation",
+    # No validation_split or subset
     seed=123,
     image_size=IMAGE_SIZE,
     batch_size=BATCH_SIZE,
@@ -39,11 +32,10 @@ print(f"Found classes: {class_names}")
 
 # --- Configure for Performance ---
 AUTOTUNE = tf.data.AUTOTUNE
+# You only have 4 images, but this is good practice
 train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
-val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
 # --- Data Augmentation Layer ---
-# This layer will run on-GPU and only during training
 data_augmentation = keras.Sequential(
     [
         layers.RandomFlip("horizontal", input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),
@@ -55,30 +47,18 @@ data_augmentation = keras.Sequential(
 
 # --- Build a More Robust Model ---
 model = keras.Sequential([
-    # Start with data augmentation
     data_augmentation,
-    
-    # Add the Rescaling layer. This is CRITICAL.
-    # It makes the model expect 0-255 input, which fixes our bug.
     layers.Rescaling(1./255, name="rescaling"),
-    
-    # Block 1
     layers.Conv2D(16, 3, padding='same', activation='relu'),
     layers.MaxPooling2D(),
-    
-    # Block 2
     layers.Conv2D(32, 3, padding='same', activation='relu'),
     layers.MaxPooling2D(),
-    
-    # Block 3
     layers.Conv2D(64, 3, padding='same', activation='relu'),
     layers.MaxPooling2D(),
-    
-    # Head
     layers.Flatten(),
     layers.Dense(64, activation='relu'),
-    layers.Dropout(0.5), # Add dropout to prevent overfitting
-    layers.Dense(num_classes, activation='softmax', name="output") # Use softmax
+    layers.Dropout(0.5),
+    layers.Dense(num_classes, activation='softmax', name="output")
 ])
 
 model.summary()
@@ -89,36 +69,23 @@ model.compile(
     metrics=['accuracy']
 )
 
-# --- Add Early Stopping ---
-# This stops training when the validation accuracy stops improving.
-early_stopper = tf.keras.callbacks.EarlyStopping(
-    monitor='val_accuracy',  # Monitor validation accuracy
-    patience=10,             # Stop after 10 epochs of no improvement
-    verbose=1,
-    restore_best_weights=True # Keep the best model, not the last one
-)
+# --- Early Stopping REMOVED ---
+# We have no validation data, so we cannot use EarlyStopping.
 
 print("\nStarting model training...")
 history = model.fit(
     train_ds, 
-    validation_data=val_ds, 
-    epochs=EPOCHS,
-    callbacks=[early_stopper] # Add the callback here
+    # validation_data=val_ds, # REMOVED
+    epochs=EPOCHS
+    # callbacks=[early_stopper] # REMOVED
 )
 
-print("\nTraining complete. Model accuracy on validation set:")
-val_loss, val_acc = model.evaluate(val_ds)
-print(f"Validation Accuracy: {val_acc * 100:.2f}%")
+print("\nTraining complete.")
+# We cannot evaluate on a validation set, because we don't have one.
 
 
 print("\nConverting model to TensorFlow Lite (.tflite) WITHOUT optimization...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
-
-# --- OPTIMIZATION REMOVED (as in your original script) ---
-# This is fine for now. It keeps the model as float32.
-# converter.optimizations = [tf.lite.Optimize.DEFAULT] 
-# --------------------------------------------------------
-
 tflite_model = converter.convert()
 
 with open("model.tflite", "wb") as f:
@@ -127,7 +94,6 @@ with open("model.tflite", "wb") as f:
 print(f"Success! Saved UNOPTIMIZED model as 'model.tflite' ({len(tflite_model)} bytes)")
 print("Phase 1 is complete. Add model.tflite to your GitHub repo.")
 
-# Update app.py class_names (optional helper)
 print("\n--- IMPORTANT! ---")
 print("Make sure the class_names list in your app.py matches this EXACT order:")
 print(f"class_names = {class_names}")
