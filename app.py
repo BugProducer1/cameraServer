@@ -15,7 +15,7 @@ IMG_HEIGHT = 96 # Should match the training script (train.py)
 IMG_WIDTH = 96 # Should match the training script (train.py)
 
 # !! IMPORTANT: Make sure this list EXACTLY matches the order from train.py !!
-class_names = ['cardboard', 'glass', 'metal', 'paper', 'plastic', 'trash']
+class_names = ['metal', 'plastic']
 
 try:
     print(f"Loading TFLite model from: {MODEL_PATH}")

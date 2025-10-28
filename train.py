@@ -55,7 +55,7 @@ model.compile(
 
 print("\nStarting model training...")
 # You can adjust epochs based on previous results, 15 seemed okay
-model.fit(train_ds, validation_data=val_ds, epochs=30)
+model.fit(train_ds, validation_data=val_ds, epochs=100)
 
 print("\nConverting model to TensorFlow Lite (.tflite) WITHOUT optimization...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
