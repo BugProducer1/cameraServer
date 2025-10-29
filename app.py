@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import tensorflow as tf
 tflite = tf.lite
-
 from flask import Flask, request, Response, render_template_string
 import base64
 
@@ -15,7 +14,7 @@ input_details = None
 output_details = None
 IMG_HEIGHT = 96
 IMG_WIDTH = 96
-class_names = ['metal', 'plastic']
+class_names = ['plastic', 'metal']
 
 try:
     interpreter = tflite.Interpreter(model_path=MODEL_PATH)
