@@ -10,7 +10,7 @@ IMG_HEIGHT = 96
 IMAGE_SIZE = (IMG_WIDTH, IMG_HEIGHT)
 BATCH_SIZE = 16
 DATA_DIR = "dataset"
-EPOCHS = 30
+EPOCHS = 50
 
 print(f"Loading images from: {DATA_DIR}")
 
