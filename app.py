@@ -1,7 +1,9 @@
 import os
 import cv2
 import numpy as np
-import tflite_runtime.interpreter as tflite
+import tensorflow as tf
+tflite = tf.lite
+
 from flask import Flask, request, Response, render_template_string
 import base64
 
@@ -37,8 +39,8 @@ def run_ai_on_image(image_bytes):
         if input_details[0]['dtype'] == np.float32:
             img_batch = img_batch.astype(np.float32) / 255.0
         else:
-            img_batch = img_batch.astype(np.uint8)
-        interpreter.set_tensor(input_details[0]['index'], img_batch)
+            img_batch = img_batch.astype(np.float32) / 255.0
+            interpreter.set_tensor(input_details[0]['index'], img_batch)
         interpreter.invoke()
         prediction = interpreter.get_tensor(output_details[0]['index'])
         scores = prediction[0]
