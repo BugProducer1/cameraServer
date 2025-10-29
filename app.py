@@ -93,7 +93,7 @@ def preview():
         if frame_rgb is not None:
             _, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
             image_base64 = base64.b64encode(buffer).decode('utf-8')
-            image_url = f"data:image/jpeg;base64,{image_base64}"
+            image_url = f"data:image/jpeg,jpg;base64,{image_base64}"
         else:
             image_url = None
         return render_template_string(HTML_TEMPLATE, result=result, image_url=image_url)
