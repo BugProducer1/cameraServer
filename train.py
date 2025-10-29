@@ -10,7 +10,7 @@ IMG_HEIGHT = 96
 IMAGE_SIZE = (IMG_WIDTH, IMG_HEIGHT)
 BATCH_SIZE = 16
 DATA_DIR = "dataset"
-EPOCHS = 1000
+EPOCHS = 100
 
 print(f"Loading images from: {DATA_DIR}")
 
@@ -74,7 +74,7 @@ model.compile(
 
 early_stopper = tf.keras.callbacks.EarlyStopping(
     monitor='val_accuracy',
-    patience=10,
+    patience=5,
     verbose=1,
     restore_best_weights=True
 )
