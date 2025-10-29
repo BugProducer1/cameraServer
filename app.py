@@ -35,11 +35,9 @@ def run_ai_on_image(image_bytes):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img_resized = cv2.resize(frame_rgb, (IMG_WIDTH, IMG_HEIGHT))
         img_batch = np.expand_dims(img_resized, axis=0)
-        if input_details[0]['dtype'] == np.float32:
-            img_batch = img_batch.astype(np.float32) / 255.0
-        else:
-            img_batch = img_batch.astype(np.float32) / 255.0
-            interpreter.set_tensor(input_details[0]['index'], img_batch)
+        img_batch = img_batch.astype(np.float32) / 255.0
+
+        interpreter.set_tensor(input_details[0]['index'], img_batch)
         interpreter.invoke()
         prediction = interpreter.get_tensor(output_details[0]['index'])
         scores = prediction[0]
