@@ -1,8 +1,12 @@
 import os
 import cv2
 import numpy as np
+# --- START FIX ---
+# Import the TFLite runtime instead of the full TensorFlow
 import tflite_runtime.interpreter as tflite
-from flask import Flask, request, Response
+# --- END FIX ---
+from flask import Flask, request, Response, render_template_string
+import base64
 
 app = Flask(__name__)
 
@@ -14,94 +18,137 @@ IMG_HEIGHT = 96
 IMG_WIDTH = 96
 
 # --- IMPORTANT ---
-# Make sure this order matches the output from train.py
-# (e.g., "Found classes: ['metal', 'plastic']")
-class_names = ['metal', 'plastic']
+# Make sure this order matches your training output!
+class_names = ['plastic', 'metal'] 
 
 try:
-    print(f"Loading TFLite model from: {MODEL_PATH}")
+    print(f"Loading TFLite model from: {MODEL_PATH}") # Added print for debugging
     interpreter = tflite.Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
-
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
-
-    print(f"Model loaded successfully. Expecting input shape: {input_details[0]['shape']}")
-    print(f"Input type: {input_details[0]['dtype']}")
-
+    print("Model loaded successfully.") # Added print for debugging
 except Exception as e:
-    print(f"ERROR: Failed to load model or allocate tensors: {e}")
+    print(f"Model load error: {e}")
 
 def run_ai_on_image(image_bytes):
     if interpreter is None:
-        print("ERROR: Interpreter not available.")
-        return "Error: Model not loaded"
-
-    print("Image received, running AI model...")
-
+        print("ERROR: Model not loaded") # Added print for debugging
+        return "Error: Model not loaded", None
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-
-        # --- START OF BUG FIX ---
-        
-        # 1. Decode the image using the correct flag (IMREAD_COLOR)
-        #    This loads the image as BGR by default.
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is None:
-            print("ERROR: Failed to decode image.")
-            return "Error: Bad image data"
-
-        # 2. Convert the image from BGR (OpenCV default) to RGB (TensorFlow default)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            print("ERROR: Bad image data") # Added print for debugging
+            return "Error: Bad image data", None
         
-        # --- END OF BUG FIX ---
-
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img_resized = cv2.resize(frame_rgb, (IMG_WIDTH, IMG_HEIGHT))
         img_batch = np.expand_dims(img_resized, axis=0)
-
-        # Normalize or cast type based on model input requirements
-        if input_details[0]['dtype'] == np.float32:
-            img_batch = img_batch.astype(np.float32) 
-        else:
-            img_batch = img_batch.astype(np.uint8)
         
+        # Check model input type and normalize if necessary
+        if input_details[0]['dtype'] == np.float32:
+            print("Model expects FLOAT32, normalizing image.") # Added print
+            # Normalize to 0-1 range if the model is float32
+            img_batch = img_batch.astype(np.float32) / 255.0
+        else:
+            print("Model expects UINT8, using original image.") # Added print
+            img_batch = img_batch.astype(np.uint8) # Or whatever type it expects
+
         interpreter.set_tensor(input_details[0]['index'], img_batch)
         interpreter.invoke()
         prediction = interpreter.get_tensor(output_details[0]['index'])
-
+        
         scores = prediction[0]
-        predicted_index = np.argmax(scores)
-        
-        print(f"Raw Scores: {scores}")
-        
-        label = class_names[predicted_index]
-        confidence = 100 * scores[predicted_index] # Note: This is not a true confidence score for softmax
+        idx = np.argmax(scores)
+        label = class_names[idx]
+        conf = 100 * float(scores[idx])
 
-        print(f"AI Result: {label} ({confidence:.2f}%)")
-        return label
-
+        print(f"Prediction: {label} ({conf:.2f}%)") # Added print for debugging
+        return f"{label} ({conf:.2f}%)", frame_rgb
+    
     except Exception as e:
-        print(f"ERROR during inference: {e}")
-        return "Error: Inference failed"
+        print(f"ERROR: Inference failed: {e}") # Added print for debugging
+        return "Error: Inference failed", None
 
+HTML_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Preview & Prediction</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 40px; background: #f7f7f7; }
+        h1 { color: #333; }
+        form { margin: 20px auto; padding: 20px; background: #fff; border-radius: 10px; max-width: 400px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input[type="file"] { border: 1px solid #ccc; padding: 10px; border-radius: 5px; width: calc(100% - 22px); }
+        input[type="submit"] { background: #0066cc; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        input[type="submit"]:hover { background: #0055b3; }
+        img { max-width: 100%; height: auto; margin-top: 20px; border-radius: 5px; border: 1px solid #ddd; }
+        .result { font-weight: bold; color: #0066cc; margin-top: 20px; font-size: 20px; }
+        .preview-container { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>AI Image Classifier</h1>
+    <form action="/preview" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept="image/*" required><br><br>
+        <input type="submit" value="Upload & Predict">
+    </form>
+    {% if image_url %}
+        <div class="preview-container">
+            <img src="{{ image_url }}" alt="Uploaded Image Preview">
+            <div class="result">{{ result }}</div>
+        </div>
+    {% elif result %}
+        <div class="result">{{ result }}</div>
+    {% endif %}
+</body>
+</html>
+"""
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/preview', methods=['POST'])
+def preview():
+    try:
+        file = request.files.get('file') # Use .get() for safety
+        if not file or file.filename == '':
+            return render_template_string(HTML_TEMPLATE, result="No file selected")
+        
+        image_bytes = file.read()
+        result, frame_rgb = run_ai_on_image(image_bytes)
+        
+        if frame_rgb is not None:
+            # Convert the RGB frame back to BGR for OpenCV encoding
+            _, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
+            image_base64 = base64.b64encode(buffer).decode('utf-8')
+            image_url = f"data:image/jpeg;base64,{image_base64}"
+        else:
+            image_url = None
+            
+        return render_template_string(HTML_TEMPLATE, result=result, image_url=image_url)
+    
+    except Exception as e:
+        print(f"Error in /preview: {e}") # Added print for debugging
+        return render_template_string(HTML_TEMPLATE, result=f"Server error: {e}")
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
-    if request.method == 'POST':
-        try:
-            image_data = request.data
-            if not image_data:
-                return Response(response="Error: No image data received", status=400, mimetype='text/plain')
-
-            result = run_ai_on_image(image_data)
-            return Response(response=result, status=200, mimetype='text/plain')
-
-        except Exception as e:
-            print(f"Error processing upload request: {e}")
-            return Response(response="Server Error", status=500, mimetype='text/plain')
-    else:
-        return Response(response="Method Not Allowed", status=405, mimetype='text/plain')
-
+    try:
+        image_data = request.data
+        if not image_data:
+            return Response(response="Error: No image data received", status=400, mimetype='text/plain')
+        
+        result, _ = run_ai_on_image(image_data)
+        
+        return Response(response=result, status=200, mimetype='text/plain')
+    except Exception as e:
+        print(f"Error in /upload: {e}") # Added print for debugging
+        return Response(response="Server Error", status=500, mimetype='text/plain')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
