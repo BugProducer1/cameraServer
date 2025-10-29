@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow import layers
+from tensorflow.keras import layers
 import numpy as np
 import os
 import sys
@@ -74,7 +74,7 @@ model.compile(
 
 early_stopper = tf.keras.callbacks.EarlyStopping(
     monitor='val_accuracy',
-    patience=5,
+    patience=10,
     verbose=1,
     restore_best_weights=True
 )
